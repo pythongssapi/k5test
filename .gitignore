@@ -1,0 +1,13 @@
+*.egg-info
+*.egg
+*~
+*.pyc
+/build/
+*.swp
+*.swo
+*.so
+.tox
+dist
+**/__pycache__
+.eggs
+.venv
