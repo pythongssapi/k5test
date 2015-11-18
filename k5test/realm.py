@@ -31,10 +31,14 @@ import string
 import sys
 import subprocess
 import tempfile
+import logging
 
 import six
 
 from k5test import _utils
+
+
+_LOG = logging.getLogger(__name__)
 
 
 def _cfg_merge(cfg1, cfg2):
@@ -167,12 +171,12 @@ class K5Realm(object):
                                            stderr=stderr_out).strip()
             path = path.decode(sys.getfilesystemencoding() or
                                sys.getdefaultencoding())
-            print("Using discovered path for {name} ({path}".format(
+            _LOG.debug("Using discovered path for {name} ({path}".format(
                 name=name, path=path))
             return path
         except subprocess.CalledProcessError as e:
             path = paths.get(name, default)
-            print("Using default path for {name} ({path}): {err}".format(
+            _LOG.debug("Using default path for {name} ({path}): {err}".format(
                 name=name, path=path, err=e))
             return path
 
@@ -281,8 +285,8 @@ class K5Realm(object):
         code = proc.returncode
         cmd = ' '.join(args)
         outstr = outdata.decode()
-        print('[OUTPUT FROM `{args}`]\n{output}\n'.format(args=cmd,
-                                                          output=outstr))
+        _LOG.debug('[OUTPUT FROM `{args}`]\n{output}\n'.format(args=cmd,
+                                                               output=outstr))
         if code != expected_code:
             raise Exception("Unexpected return code "
                             "for command `{args}`: {code}".format(args=cmd,
@@ -315,8 +319,8 @@ class K5Realm(object):
                                 'with code {code}'.format(args=cmd,
                                                           code=code))
             else:
-                print('[OUTPUT FROM `{args}`]\n'
-                      '{output}\n'.format(args=cmd, output=line))
+                _LOG.debug('[OUTPUT FROM `{args}`]\n'
+                           '{output}\n'.format(args=cmd, output=line))
 
             if sentinel in line:
                 break
