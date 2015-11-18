@@ -4,11 +4,11 @@ from setuptools import setup
 
 setup(
     name='k5test',
-    version='1.0.0',
+    version='0.9.0',
     author='The Python GSSAPI Team',
     author_email='sross@redhat.com',
     packages=['k5test'],
-    description='A library for testing Python applications in'
+    description='A library for testing Python applications in '
                 'self-contained Kerberos 5 environments',
     long_description=open('README.md').read(),
     license='LICENSE.txt',
@@ -21,6 +21,7 @@ setup(
         'Programming Language :: Python :: 3.3',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: ISC License (ISCL)',
+        'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: Implementation :: CPython',
         'Topic :: Security',
     ],
