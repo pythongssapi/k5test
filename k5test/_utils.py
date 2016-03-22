@@ -65,9 +65,11 @@ def find_plugin_dir():
 
     # if there was no LD_LIBRARY_PATH, or the above failed
     if _PLUGIN_DIR is None:
-        # if we don't have a LD_LIBRARY_PATH, just search in
-        # $prefix/lib
+        lib_dir = os.path.join(get_output('krb5-config --prefix'), 'lib64')
+        _PLUGIN_DIR = _decide_plugin_dir(_find_plugin_dirs_installed(lib_dir))
 
+    # /usr/lib64 seems only to be distinct on Fedora/RHEL/Centos family
+    if _PLUGIN_DIR is None:
         lib_dir = os.path.join(get_output('krb5-config --prefix'), 'lib')
         _PLUGIN_DIR = _decide_plugin_dir(_find_plugin_dirs_installed(lib_dir))
 
