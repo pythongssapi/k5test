@@ -96,8 +96,12 @@ def _decide_plugin_dir(dirs):
 
 
 def _find_plugin_dirs_installed(search_path):
-    options_raw = get_output('find %s/ -type d '
-                             '-path "*/krb5/plugins"' % search_path)
+    try:
+        options_raw = get_output('find %s/ -type d '
+                                 '-path "*/krb5/plugins"' % search_path,
+                                 stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        options_raw = None
 
     if options_raw:
         return options_raw.split('\n')
