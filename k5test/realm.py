@@ -337,8 +337,8 @@ class K5Realm(object):
                                             'starting...')
 
     def _stop_daemon(self, proc):
-        os.kill(proc.pid, signal.SIGTERM)
-        proc.wait()
+        proc.terminate()
+        proc.communicate()
         self._daemons.remove(proc)
 
     def stop_kdc(self):
