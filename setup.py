@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='k5test',
-    version='0.9.1',
+    version='0.9.2',
     author='The Python GSSAPI Team',
     author_email='sross@redhat.com',
     packages=['k5test'],
