@@ -185,7 +185,7 @@ class K5Realm(object):
                                              '/usr/sbin/kdb5_util', paths)
         self.krb5kdc = self._discover_path('krb5kdc',
                                            '/usr/sbin/krb5kdc', paths)
-        self.kadmin_local = self._discover_path('kadmin_local',
+        self.kadmin_local = self._discover_path('kadmin.local',
                                                 '/usr/sbin/kadmin.local',
                                                 paths)
         self.kprop = self._discover_path('kprop', '/usr/sbin/kprop', paths)
