@@ -359,7 +359,7 @@ class K5Realm(object):
 
     def stop_kadmind(self):
         assert(self._kadmind_proc is not None)
-        self.stop_daemon(self._kadmind_proc)
+        self._stop_daemon(self._kadmind_proc)
         self._kadmind_proc = None
 
     def stop(self):
