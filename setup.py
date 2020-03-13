@@ -13,6 +13,7 @@ setup(
     long_description=open('README.md').read(),
     license='LICENSE.txt',
     url="https://github.com/pythongssapi/python-gssapi",
+    download_url="https://github.com/pythongssapi/k5test",
     classifiers=[
         'Development Status :: 4 - Beta',
         'Programming Language :: Python',
