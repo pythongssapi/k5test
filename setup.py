@@ -12,7 +12,7 @@ setup(
                 'self-contained Kerberos 5 environments',
     long_description=open('README.md').read(),
     license='LICENSE.txt',
-    url="https://github.com/pythongssapi/python-gssapi",
+    url="https://github.com/pythongssapi/k5test",
     classifiers=[
         'Development Status :: 4 - Beta',
         'Programming Language :: Python',
