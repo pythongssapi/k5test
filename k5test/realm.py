@@ -22,6 +22,7 @@
 # or implied warranty.
 
 # Changes from original: modified to work with Python's unittest
+import abc
 import copy
 import os
 import shutil
@@ -36,6 +37,11 @@ import logging
 import six
 
 from k5test import _utils
+
+try:
+    from shlex import quote as shlex_quote
+except ImportError:
+    from pipes import quote as shlex_quote
 
 
 _LOG = logging.getLogger(__name__)
@@ -63,42 +69,51 @@ def _cfg_merge(cfg1, cfg2):
     return result
 
 
-_default_krb5_conf = {
-    'libdefaults': {
-        'default_realm': '$realm',
-        'dns_lookup_kdc': 'false'},
-    'realms': {
-        '$realm': {
-            'kdc': '$hostname:$port0',
-            'admin_server': '$hostname:$port1',
-            'kpasswd_server': '$hostname:$port2'}}}
+def _discover_path(name, default, paths):
+    stderr_out = getattr(subprocess, 'DEVNULL', subprocess.PIPE)
+    try:
+        path = subprocess.check_output(['which', name],
+                                        stderr=stderr_out).strip()
+        path = path.decode(sys.getfilesystemencoding() or
+                            sys.getdefaultencoding())
+        _LOG.debug("Using discovered path for {name} ({path}".format(
+            name=name, path=path))
+        return path
+    except subprocess.CalledProcessError as e:
+        path = paths.get(name, default)
+        _LOG.debug("Using default path for {name} ({path}): {err}".format(
+            name=name, path=path, err=e))
+        return path
 
 
-_default_kdc_conf = {
-    'realms': {
-        '$realm': {
-            'database_module': 'db',
-            'iprop_port': '$port4',
-            'key_stash_file': '$tmpdir/stash',
-            'acl_file': '$tmpdir/acl',
-            'dictfile': '$tmpdir/dictfile',
-            'kadmind_port': '$port1',
-            'kpasswd_port': '$port2',
-            'kdc_ports': '$port0',
-            'kdc_tcp_ports': '$port0',
-            'database_name': '$tmpdir/db'}},
-    'dbmodules': {
-        'db_module_dir': os.path.join(_utils.find_plugin_dir(),
-                                      'kdb'),
-        'db': {'db_library': 'db2', 'database_name': '$tmpdir/db'}},
-    'logging': {
-        'admin_server': 'FILE:$tmpdir/kadmind5.log',
-        'kdc': 'FILE:$tmpdir/kdc.log',
-        'default': 'FILE:$tmpdir/others.log'}}
-
-
+@six.add_metaclass(abc.ABCMeta)
 class K5Realm(object):
     """An object representing a functional krb5 test realm."""
+
+    def __new__(cls, *args, **kwargs):
+        provider_cls = cls
+
+        if provider_cls == K5Realm:
+            krb5_config = _discover_path('krb5-config',
+                                         '/usr/bin/krb5-config', {})
+
+            try:
+                krb5_version = subprocess.check_output(
+                    [krb5_config, '--version'], stderr=subprocess.STDOUT)
+                krb5_version = krb5_version.decode(
+                    sys.getfilesystemencoding() or sys.getdefaultencoding())
+
+                if 'heimdal' in krb5_version.lower():
+                    provider_cls = HeimdalRealm
+
+                else:
+                    provider_cls = MITRealm
+
+            except Exception:
+                provider_cls = MITRealm
+
+        return super(K5Realm, cls).__new__(provider_cls)
+
     def __init__(self, realm='KRBTEST.COM', portbase=61000,
                  krb5_conf=None, kdc_conf=None, create_kdb=True,
                  krbtgt_keysalt=None, create_user=True, get_creds=True,
@@ -123,8 +138,7 @@ class K5Realm(object):
         self.client_keytab = os.path.join(self.tmpdir, 'client_keytab')
         self.ccache = os.path.join(self.tmpdir, 'ccache')
         self.kadmin_ccache = os.path.join(self.tmpdir, 'kadmin_ccache')
-        self._krb5_conf = _cfg_merge(_default_krb5_conf, krb5_conf)
-        self._kdc_conf = _cfg_merge(_default_kdc_conf, kdc_conf)
+
         self._kdc_proc = None
         self._kadmind_proc = None
         krb5_conf_path = os.path.join(self.tmpdir, 'krb5.conf')
@@ -138,16 +152,18 @@ class K5Realm(object):
         self._devnull = open(os.devnull, 'r')
 
         if existing is None:
-            self._create_conf(self._krb5_conf, krb5_conf_path)
-            self._create_conf(self._kdc_conf, kdc_conf_path)
+            self._create_conf(_cfg_merge(self._krb5_conf, krb5_conf),
+                              krb5_conf_path)
+            if self._kdc_conf or kdc_conf:
+                self._create_conf(_cfg_merge(self._kdc_conf, kdc_conf),
+                              kdc_conf_path)
             self._create_acl()
             self._create_dictfile()
 
             if create_kdb:
                 self.create_kdb()
             if krbtgt_keysalt and create_kdb:
-                self.run_kadminl('cpw -randkey -e %s %s' %
-                                 (krbtgt_keysalt, self.krbtgt_princ))
+                self.change_password(self.krbtgt_princ, keysalt=krbtgt_keysalt)
             if create_user and create_kdb:
                 self.addprinc(self.user_princ, self.password('user'))
                 self.addprinc(self.admin_princ, self.password('admin'))
@@ -164,36 +180,75 @@ class K5Realm(object):
             self.kinit(self.user_princ, self.password('user'))
             self.klist()
 
-    def _discover_path(self, name, default, paths):
-        stderr_out = getattr(subprocess, 'DEVNULL', subprocess.PIPE)
-        try:
-            path = subprocess.check_output(['which', name],
-                                           stderr=stderr_out).strip()
-            path = path.decode(sys.getfilesystemencoding() or
-                               sys.getdefaultencoding())
-            _LOG.debug("Using discovered path for {name} ({path}".format(
-                name=name, path=path))
-            return path
-        except subprocess.CalledProcessError as e:
-            path = paths.get(name, default)
-            _LOG.debug("Using default path for {name} ({path}): {err}".format(
-                name=name, path=path, err=e))
-            return path
+    @abc.abstractproperty
+    def provider(self):
+        pass
+
+    @abc.abstractproperty
+    def _default_paths(self):
+        pass
+
+    @abc.abstractproperty
+    def _krb5_conf(self):
+        pass
+
+    @abc.abstractproperty
+    def _kdc_conf(self):
+        pass
+
+    @abc.abstractmethod
+    def create_kdb(self):
+        pass
+
+    @abc.abstractmethod
+    def addprinc(self, princname, password=None):
+        pass
+
+    @abc.abstractmethod
+    def change_password(self, principal, password=None, keysalt=None):
+        pass
+
+    @abc.abstractmethod
+    def extract_keytab(self, princname, keytab):
+        pass
+
+    @abc.abstractmethod
+    def kinit(self, princname, password=None, flags=[], verbose=True,
+              **keywords):
+        pass
+
+    @abc.abstractmethod
+    def klist(self, ccache=None, **keywords):
+        pass
+
+    @abc.abstractclassmethod
+    def klist_keytab(self, keytab=None, **keywords):
+        pass
+
+    @abc.abstractmethod
+    def prep_kadmin(self, princname=None, pw=None, flags=[]):
+        pass
+
+    @abc.abstractmethod
+    def run_kadmin(self, query, **keywords):
+        pass
+
+    @abc.abstractmethod
+    def run_kadminl(self, query, **keywords):
+        pass
+
+    @abc.abstractmethod
+    def start_kdc(self, args=[], env=None):
+        pass
+
+    @abc.abstractmethod
+    def start_kadmind(self, env=None):
+        pass
 
     def _init_paths(self, **paths):
-        self.kdb5_util = self._discover_path('kdb5_util',
-                                             '/usr/sbin/kdb5_util', paths)
-        self.krb5kdc = self._discover_path('krb5kdc',
-                                           '/usr/sbin/krb5kdc', paths)
-        self.kadmin_local = self._discover_path('kadmin.local',
-                                                '/usr/sbin/kadmin.local',
-                                                paths)
-        self.kprop = self._discover_path('kprop', '/usr/sbin/kprop', paths)
-        self.kadmind = self._discover_path('kadmind',
-                                           '/usr/sbin/kadmind', paths)
-
-        self._kinit = self._discover_path('kinit', '/usr/bin/kinit', paths)
-        self._klist = self._discover_path('klist', '/usr/bin/klist', paths)
+        for attr, name, default in self._default_paths:
+            value = _discover_path(name, default, paths)
+            setattr(self, attr, value)
 
     def _create_conf(self, profile, filename):
         with open(filename, 'w') as conf_file:
@@ -257,13 +312,14 @@ class K5Realm(object):
     def _make_env(self, krb5_conf_path, kdc_conf_path):
         env = {}
         env['KRB5_CONFIG'] = krb5_conf_path
-        env['KRB5_KDC_PROFILE'] = kdc_conf_path or os.devnull
         env['KRB5CCNAME'] = self.ccache
         env['KRB5_KTNAME'] = self.keytab
         env['KRB5_CLIENT_KTNAME'] = self.client_keytab
+        env['KRB5_KDC_PROFILE'] = kdc_conf_path or os.devnull
         env['KRB5RCACHEDIR'] = self.tmpdir
         env['KPROPD_PORT'] = six.text_type(self.kprop_port())
         env['KPROP_PORT'] = six.text_type(self.kprop_port())
+
         return env
 
     def run(self, args, env=None, input=None, expected_code=0):
@@ -303,15 +359,16 @@ class K5Realm(object):
     def server_port(self):
         return self.portbase + 5
 
-    def create_kdb(self):
-        self.run([self.kdb5_util, 'create', '-W', '-s', '-P', 'master'])
+    def _start_daemon(self, args, env=None, sentinel=None):
+        if env is None:
+            env = self.env
 
-    def _start_daemon(self, args, env, sentinel):
+        stdout = subprocess.PIPE if sentinel else self._devnull
         proc = subprocess.Popen(args, stdin=self._devnull,
-                                stdout=subprocess.PIPE,
+                                stdout=stdout,
                                 stderr=subprocess.STDOUT, env=env)
         cmd = ' '.join(args)
-        while True:
+        while sentinel:
             line = proc.stdout.readline().decode()
             if line == "":
                 code = proc.wait()
@@ -329,13 +386,6 @@ class K5Realm(object):
 
         return proc
 
-    def start_kdc(self, args=[], env=None):
-        if env is None:
-            env = self.env
-        assert(self._kdc_proc is None)
-        self._kdc_proc = self._start_daemon([self.krb5kdc, '-n'] + args, env,
-                                            'starting...')
-
     def _stop_daemon(self, proc):
         proc.terminate()
         proc.communicate()
@@ -345,17 +395,6 @@ class K5Realm(object):
         assert(self._kdc_proc is not None)
         self._stop_daemon(self._kdc_proc)
         self._kdc_proc = None
-
-    def start_kadmind(self, env=None):
-        if env is None:
-            env = self.env
-        assert(self._kadmind_proc is None)
-        dump_path = os.path.join(self.tmpdir, 'dump')
-        self._kadmind_proc = self._start_daemon([self.kadmind, '-nofork', '-W',
-                                                 '-p', self.kdb5_util,
-                                                 '-K', self.kprop,
-                                                 '-F', dump_path], env,
-                                                'starting...')
 
     def stop_kadmind(self):
         assert(self._kadmind_proc is not None)
@@ -371,49 +410,130 @@ class K5Realm(object):
         if self.tmpdir and not self.is_existing:
             shutil.rmtree(self.tmpdir)
 
-    def addprinc(self, princname, password=None):
-        if password:
-            self.run_kadminl('addprinc -pw %s %s' % (password, princname))
+    def password(self, name):
+        """Get a weakly random password from name, consistent across calls."""
+        return name + six.text_type(os.path.basename(self.tmpdir))
+
+    def special_env(self, name, has_kdc_conf, krb5_conf=None, kdc_conf=None):
+        krb5_conf_path = os.path.join(self.tmpdir, 'krb5.conf.%s' % name)
+        krb5_conf = _cfg_merge(self._krb5_conf, krb5_conf)
+        self._create_conf(krb5_conf, krb5_conf_path)
+        if has_kdc_conf and self._kdc_conf:
+            kdc_conf_path = os.path.join(self.tmpdir, 'kdc.conf.%s' % name)
+            kdc_conf = _cfg_merge(self._kdc_conf, kdc_conf)
+            self._create_conf(kdc_conf, kdc_conf_path)
         else:
-            self.run_kadminl('addprinc -randkey %s' % princname)
+            kdc_conf_path = None
+        return self._make_env(krb5_conf_path, kdc_conf_path)
+
+    def kill_daemons(self):
+        # clean up daemons
+        for proc in self._daemons:
+            os.kill(proc.pid, signal.SIGTERM)
+
+
+class MITRealm(K5Realm):
+
+    @property
+    def provider(self):
+        return 'mit'
+
+    @property
+    def _default_paths(self):
+        return [
+            ('kdb5_util', 'kdb5_util', '/usr/sbin/kdb5_util'),
+            ('krb5kdc', 'krb5kdc', '/usr/sbin/kdb5kdc'),
+            ('kadmin', 'kadmin', '/usr/bin/admin'),
+            ('kadmin_local', 'kadmin.local', '/usr/sbin/kadmin.local'),
+            ('kadmind', 'kadmind', '/usr/sbin/kadmind'),
+            ('kprop', 'kprop', '/usr/sbin/kprop'),
+            ('_kinit', 'kinit', '/usr/bin/kinit'),
+            ('_klist', 'klist', '/usr/bin/klist'),
+        ]
+
+    @property
+    def _krb5_conf(self):
+        return {
+            'libdefaults': {
+                'default_realm': '$realm',
+                'dns_lookup_kdc': 'false'},
+            'realms': {
+                '$realm': {
+                    'kdc': '$hostname:$port0',
+                    'admin_server': '$hostname:$port1',
+                    'kpasswd_server': '$hostname:$port2'}}}
+
+    @property
+    def _kdc_conf(self):
+        return {
+            'realms': {
+                '$realm': {
+                    'database_module': 'db',
+                    'iprop_port': '$port4',
+                    'key_stash_file': '$tmpdir/stash',
+                    'acl_file': '$tmpdir/acl',
+                    'dict_file': '$tmpdir/dictfile',
+                    'kadmind_port': '$port1',
+                    'kpasswd_port': '$port2',
+                    'kdc_ports': '$port0',
+                    'kdc_tcp_ports': '$port0',
+                    'database_name': '$tmpdir/db'}},
+            'dbmodules': {
+                'db_module_dir': os.path.join(_utils.find_plugin_dir(),
+                                            'kdb'),
+                'db': {'db_library': 'db2', 'database_name': '$tmpdir/db'}},
+            'logging': {
+                'admin_server': 'FILE:$tmpdir/kadmind5.log',
+                'kdc': 'FILE:$tmpdir/kdc.log',
+                'default': 'FILE:$tmpdir/others.log'}}
+
+    def create_kdb(self):
+        self.run([self.kdb5_util, 'create', '-W', '-s', '-P', 'master'])
+
+    def addprinc(self, princname, password=None):
+        args = ['addprinc']
+        if password:
+            args.extend(['-pw', password])
+        else:
+            args.append('-randkey')
+
+        args.append(princname)
+        self.run_kadminl(args)
+
+    def change_password(self, principal, password=None, keysalt=None):
+        args = ['cpw']
+
+        if password:
+            args.extend(['-pw', password])
+        else:
+            args.append('-randkey')
+
+        if keysalt:
+            args.extend('-e', keysalt)
+
+        args.append(principal)
+        self.run_kadminl(args)
 
     def extract_keytab(self, princname, keytab):
         self.run_kadminl('ktadd -k %s -norandkey %s' % (keytab, princname))
 
     def kinit(self, princname, password=None, flags=[], verbose=True,
               **keywords):
-        if password:
-            input = password + "\n"
-        else:
-            input = None
-
         cmd = [self._kinit]
         if verbose:
             cmd.append('-V')
         cmd.extend(flags)
         cmd.append(princname)
+
+        input = password + "\n" if password else None
         return self.run(cmd, input=input, **keywords)
 
     def klist(self, ccache=None, **keywords):
-        if ccache is None:
-            ccache = self.ccache
-        ccachestr = ccache
-        if len(ccachestr) < 2 or ':' not in ccachestr[2:]:
-            ccachestr = 'FILE:' + ccachestr
-        return self.run([self._klist, ccache], **keywords)
+        return self.run([self._klist, ccache or self.ccache], **keywords)
 
     def klist_keytab(self, keytab=None, **keywords):
-        if keytab is None:
-            keytab = self.keytab
-        output = self.run([self._klist, '-k', keytab], **keywords)
-        return output
-
-    def run_kadminl(self, query, env=None):
-        return self.run([self.kadmin_local, '-q', query], env=env)
-
-    def password(self, name):
-        """Get a weakly random password from name, consistent across calls."""
-        return name + six.text_type(os.path.basename(self.tmpdir))
+        return self.run([self._klist, '-k', keytab or self.keytab],
+                        **keywords)
 
     def prep_kadmin(self, princname=None, pw=None, flags=[]):
         if princname is None:
@@ -427,19 +547,150 @@ class K5Realm(object):
         return self.run([self.kadmin, '-c', self.kadmin_ccache, '-q', query],
                         **keywords)
 
-    def special_env(self, name, has_kdc_conf, krb5_conf=None, kdc_conf=None):
-        krb5_conf_path = os.path.join(self.tmpdir, 'krb5.conf.%s' % name)
-        krb5_conf = _cfg_merge(self._krb5_conf, krb5_conf)
-        self._create_conf(krb5_conf, krb5_conf_path)
-        if has_kdc_conf:
-            kdc_conf_path = os.path.join(self.tmpdir, 'kdc.conf.%s' % name)
-            kdc_conf = _cfg_merge(self._kdc_conf, kdc_conf)
-            self._create_conf(kdc_conf, kdc_conf_path)
-        else:
-            kdc_conf_path = None
-        return self._make_env(krb5_conf_path, kdc_conf_path)
+    def run_kadminl(self, query, **keywords):
+        if isinstance(query, list):
+            query = " ".join([shlex_quote(q) for q in query])
 
-    def kill_daemons(self):
-        # clean up daemons
-        for proc in self._daemons:
-            os.kill(proc.pid, signal.SIGTERM)
+        return self.run([self.kadmin_local, '-q', query], **keywords)
+
+    def start_kdc(self, args=[], env=None):
+        if self._kdc_proc:
+            raise Exception("KDC has already started")
+
+        self._kdc_proc = self._start_daemon([self.krb5kdc, '-n'] + args, env,
+                                            'starting...')
+
+    def start_kadmind(self, env):
+        if self._kadmind_proc:
+            raise Exception("kadmind has already started")
+
+        dump_path = os.path.join(self.tmpdir, 'dump')
+        self._kadmind_proc = self._start_daemon([self.kadmind, '-nofork', '-W',
+                                                 '-p', self.kdb5_util,
+                                                 '-K', self.kprop,
+                                                 '-F', dump_path], env,
+                                                'starting...')
+
+
+class HeimdalRealm(K5Realm):
+
+    @property
+    def provider(self):
+        return 'heimdal'
+
+    @property
+    def _default_paths(self):
+        return [
+            ('krb5kdc', 'kdc', '/usr/libexec/kdc'),
+            ('kadmin', 'kadmin', '/usr/bin/admin'),
+            ('kadmin_local', 'kadmin', '/usr/bin/kadmin'),
+            ('kadmind', 'kadmind', '/usr/libexec/kadmind'),
+            ('_kinit', 'kinit', '/usr/bin/kinit'),
+            ('_klist', 'klist', '/usr/bin/klist'),
+        ]
+
+    @property
+    def _krb5_conf(self):
+        return {
+            'libdefaults': {
+                'default_realm': '$realm',
+                'dns_lookup_kdc': 'false'},
+            'realms': {
+                '$realm': {
+                    'kdc': '$hostname:$port0',
+                    'admin_server': '$hostname:$port1',
+                    'kpasswd_server': '$hostname:$port2'}},
+            'logging': {
+                'kdc': 'FILE:$tmpdir/kdc.log',
+                'kadmind': 'FILE:$tmpdir/kadmind.log',
+                'kpasswdd': 'FILE:$tmpdir/kpasswdd.log',
+                'default': 'FILE:$tmpdir/others.log'},
+            'kdc': {
+                'database': {
+                    'dbname': '$tmpdir/db',
+                    'mkey_file': '$tmpdir/stash',
+                    'acl_file': '$tmpdir/acl',
+                    'log_file': '$tmpdir/db.log'},
+                'ports': '$port0'}}
+
+    @property
+    def _kdc_conf(self):
+        return
+
+    def create_kdb(self):
+        self.run_kadminl(['init', self.realm], input="\n\n")
+
+    def addprinc(self, princname, password=None):
+        args = ['add', '--use-defaults']
+        if password:
+            args.append('--password=%s' % password)
+        else:
+            args.append('--random-key')
+
+        args.append(princname)
+
+        self.run_kadminl(args)
+
+    def change_password(self, principal, password=None, keysalt=None):
+        args = ['change_password']
+
+        if password:
+            args.append('--password=%s' % password)
+        else:
+            args.append('--random-key')
+
+        if keysalt:
+            args.extend('-e', keysalt)
+
+        args.append(principal)
+        self.run_kadminl(args)
+
+    def extract_keytab(self, princname, keytab):
+        self.run_kadminl(['ext', '--keytab=%s' % keytab, princname])
+
+    def kinit(self, princname, password=None, flags=[], verbose=True,
+              **keywords):
+
+        cmd = [self._kinit]
+
+        input = None
+        if password:
+            input = password + "\n"
+            cmd.append('--password-file=STDIN')
+
+        cmd.extend(flags)
+        cmd.append(princname)
+
+        return self.run(cmd, input=input, **keywords)
+
+    def klist(self, ccache=None, **keywords):
+        return self.run([self._klist, '-c', ccache or self.ccache],
+                        **keywords)
+
+    def klist_keytab(self, keytab=None, **keywords):
+        raise NotImplementedError()  # FIXME
+
+    def prep_kadmin(self, princname=None, pw=None, flags=[]):
+        raise NotImplementedError()  # FIXME
+
+    def run_kadmin(self, query, **keywords):
+        raise NotImplementedError()  # FIXME
+
+    def run_kadminl(self, query, **keywords):
+        if not isinstance(query, list):
+            query = [query]
+
+        return self.run([self.kadmin_local, '--local'] + query, **keywords)
+
+    def start_kdc(self, args=[], env=None):
+        if self._kdc_proc:
+            raise Exception("KDC has already started")
+
+        self._kdc_proc = self._start_daemon([self.krb5kdc] + args, env)
+
+    def start_kadmind(self, env=None):
+        if self._kadmind_proc:
+            raise Exception("kadmind has already started")
+
+        port = '--ports=%s' % self.portbase + 1
+        self._kadmind_proc = self._start_daemon(self.kadmind, port)

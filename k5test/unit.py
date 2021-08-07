@@ -35,7 +35,7 @@ def gssapi_extension_test(extension_name, extension_text):
 _KRB_VERSION = None
 
 
-def krb_minversion_test(target_version, problem):
+def krb_minversion_test(target_version, problem, provider=None):
     global _KRB_VERSION
     if _KRB_VERSION is None:
         _KRB_VERSION = _utils.get_output("krb5-config --version")
@@ -43,7 +43,12 @@ def krb_minversion_test(target_version, problem):
 
     def make_ext_test(func):
         def ext_test(self, *args, **kwargs):
-            if _KRB_VERSION < target_version.split('.'):
+            if (
+                not provider or (
+                    self.realm.provider.lower() == provider.lower()
+                ) and
+                _KRB_VERSION < target_version.split('.')
+            ):
                 self.skipTest("Your GSSAPI (version %s) is known to have "
                               "problems with %s" % (_KRB_VERSION, problem))
             else:
@@ -56,12 +61,15 @@ def krb_minversion_test(target_version, problem):
 def krb_plugin_test(plugin_type, plugin_name):
     # TODO(directxman12): add a way to make this look for
     # platform-specific library extensions
-    plugin_path = os.path.join(_utils.find_plugin_dir(),
-                               plugin_type, '%s.so' % plugin_name)
+    krb5_plugin_path = _utils.find_plugin_dir()
+    plugin_path = None
+    if krb5_plugin_path:
+        plugin_path = os.path.join(krb5_plugin_path,
+                                   plugin_type, '%s.so' % plugin_name)
 
     def make_krb_plugin_test(func):
         def krb_plugin_test(self, *args, **kwargs):
-            if not os.path.exists(plugin_path):
+            if not plugin_path or not os.path.exists(plugin_path):
                 self.skipTest("You do not have the GSSAPI {type}"
                               "plugin {name} installed".format(
                                   type=plugin_type, name=plugin_name))
@@ -71,3 +79,19 @@ def krb_plugin_test(plugin_type, plugin_name):
         return krb_plugin_test
 
     return make_krb_plugin_test
+
+
+def krb_provider_test(providers, problem):
+    def make_krb_provider_test(func):
+        def krb_provider_test(self, *args, **kwargs):
+            provider_list = [p.lower() for p in providers]
+            if self.realm.provider.lower() not in provider_list:
+                self.skipTest("Your GSSAPI (provider %s) is known to have "
+                              "problems with %s"
+                              % (self.realm.provider, problem))
+            else:
+                func(self, *args, **kwargs)
+
+        return krb_provider_test
+
+    return make_krb_provider_test
