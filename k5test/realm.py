@@ -103,7 +103,14 @@ class K5Realm(object):
                 krb5_version = krb5_version.decode(
                     sys.getfilesystemencoding() or sys.getdefaultencoding())
 
-                if 'heimdal' in krb5_version.lower():
+                if (
+                    'heimdal' in krb5_version.lower() or
+                    (
+                        # macOS output doesn't contain Heimdal
+                        os.name == 'darwin' and
+                        krb5_config == '/usr/bin/krb5-config'
+                    )
+                ):
                     provider_cls = HeimdalRealm
 
                 else:
