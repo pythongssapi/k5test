@@ -19,6 +19,9 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: ISC License (ISCL)',
         'License :: OSI Approved :: MIT License',
@@ -26,7 +29,7 @@ setup(
         'Topic :: Security',
     ],
     keywords=['gssapi', 'security'],
-    install_requires=['six'],
+    install_requires=[],
     extras_require={
         'extension_test': ['gssapi']
     }

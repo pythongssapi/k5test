@@ -25,6 +25,7 @@
 # Changes from original:
 #   - modified to work with Python's unittest
 #   - added Heimdal support
+#   - removed some Python 2 specific code
 import abc
 import copy
 import os
@@ -37,8 +38,6 @@ import sys
 import subprocess
 import tempfile
 import logging
-
-import six
 
 from k5test import _utils
 
@@ -267,7 +266,7 @@ class K5Realm(metaclass=abc.ABCMeta):
                 for item in value:
                     item = self._subst_cfg_value(item)
                     conf_file.write('%s%s = %s\n' % (indent, name, item))
-            elif isinstance(value, six.string_types):
+            elif isinstance(value, str):
                 # A string value yields a straightforward variable setting.
                 value = self._subst_cfg_value(value)
                 conf_file.write('%s%s = %s\n' % (indent, name, value))
@@ -314,8 +313,8 @@ class K5Realm(metaclass=abc.ABCMeta):
         env['KRB5_KTNAME'] = self.keytab
         env['KRB5_CLIENT_KTNAME'] = self.client_keytab
         env['KRB5RCACHEDIR'] = self.tmpdir
-        env['KPROPD_PORT'] = six.text_type(self.kprop_port())
-        env['KPROP_PORT'] = six.text_type(self.kprop_port())
+        env['KPROPD_PORT'] = str(self.kprop_port())
+        env['KPROP_PORT'] = str(self.kprop_port())
         return env
 
     def run(self, args, env=None, input=None, expected_code=0):
@@ -407,7 +406,7 @@ class K5Realm(metaclass=abc.ABCMeta):
 
     def password(self, name):
         """Get a weakly random password from name, consistent across calls."""
-        return name + six.text_type(os.path.basename(self.tmpdir))
+        return name + str(os.path.basename(self.tmpdir))
 
     def special_env(self, name, has_kdc_conf, krb5_conf=None, kdc_conf=None):
         krb5_conf_path = os.path.join(self.tmpdir, f'krb5.conf.{name}')
