@@ -435,8 +435,8 @@ class MITRealm(K5Realm):
     def _default_paths(self):
         return [
             ('kdb5_util', 'kdb5_util', '/usr/sbin/kdb5_util'),
-            ('krb5kdc', 'krb5kdc', '/usr/sbin/kdb5kdc'),
-            ('kadmin', 'kadmin', '/usr/bin/admin'),
+            ('krb5kdc', 'krb5kdc', '/usr/sbin/krb5kdc'),
+            ('kadmin', 'kadmin', '/usr/bin/kadmin'),
             ('kadmin_local', 'kadmin.local', '/usr/sbin/kadmin.local'),
             ('kadmind', 'kadmind', '/usr/sbin/kadmind'),
             ('kprop', 'kprop', '/usr/sbin/kprop'),
