@@ -1,12 +1,12 @@
 import os
-import sys
 import subprocess
+import sys
 
 
 # general use
 def get_output(*args, **kwargs):
     res = subprocess.check_output(*args, shell=True, **kwargs)
-    decoded = res.decode('utf-8')
+    decoded = res.decode("utf-8")
     return decoded.strip()
 
 
@@ -27,7 +27,7 @@ def import_gssapi_extension(name):
     """
 
     try:
-        path = 'gssapi.raw.ext_{0}'.format(name)
+        path = "gssapi.raw.ext_{0}".format(name)
         __import__(path)
         return sys.modules[path]
     except ImportError:
@@ -44,33 +44,31 @@ def find_plugin_dir():
         return _PLUGIN_DIR
 
     # if we've set a LD_LIBRARY_PATH, use that first
-    ld_path_raw = os.environ.get('LD_LIBRARY_PATH')
+    ld_path_raw = os.environ.get("LD_LIBRARY_PATH")
     if ld_path_raw is not None:
         # first, try assuming it's just a normal install
 
-        ld_paths = [path for path in ld_path_raw.split(':') if path]
+        ld_paths = [path for path in ld_path_raw.split(":") if path]
 
         for ld_path in ld_paths:
             if not os.path.exists(ld_path):
                 continue
 
-            _PLUGIN_DIR = _decide_plugin_dir(
-                _find_plugin_dirs_installed(ld_path))
+            _PLUGIN_DIR = _decide_plugin_dir(_find_plugin_dirs_installed(ld_path))
             if _PLUGIN_DIR is None:
-                _PLUGIN_DIR = _decide_plugin_dir(
-                    _find_plugin_dirs_src(ld_path))
+                _PLUGIN_DIR = _decide_plugin_dir(_find_plugin_dirs_src(ld_path))
 
             if _PLUGIN_DIR is not None:
                 break
 
     # if there was no LD_LIBRARY_PATH, or the above failed
     if _PLUGIN_DIR is None:
-        lib_dir = os.path.join(get_output('krb5-config --prefix'), 'lib64')
+        lib_dir = os.path.join(get_output("krb5-config --prefix"), "lib64")
         _PLUGIN_DIR = _decide_plugin_dir(_find_plugin_dirs_installed(lib_dir))
 
     # /usr/lib64 seems only to be distinct on Fedora/RHEL/Centos family
     if _PLUGIN_DIR is None:
-        lib_dir = os.path.join(get_output('krb5-config --prefix'), 'lib')
+        lib_dir = os.path.join(get_output("krb5-config --prefix"), "lib")
         _PLUGIN_DIR = _decide_plugin_dir(_find_plugin_dirs_installed(lib_dir))
 
     if _PLUGIN_DIR is not None:
@@ -97,23 +95,25 @@ def _decide_plugin_dir(dirs):
 
 def _find_plugin_dirs_installed(search_path):
     try:
-        options_raw = get_output('find %s/ -type d \( ! -executable -o ! -readable \) '
-                                 '-prune -o '
-                                 '-type d -path "*/krb5/plugins" -print' % search_path,
-                                 stderr=subprocess.STDOUT)
+        options_raw = get_output(
+            "find %s/ -type d \( ! -executable -o ! -readable \) "
+            "-prune -o "
+            '-type d -path "*/krb5/plugins" -print' % search_path,
+            stderr=subprocess.STDOUT,
+        )
     except subprocess.CalledProcessError:
         options_raw = None
 
     if options_raw:
-        return options_raw.split('\n')
+        return options_raw.split("\n")
     else:
         return None
 
 
 def _find_plugin_dirs_src(search_path):
-    options_raw = get_output('find %s/../ -type d -name plugins' % search_path)
+    options_raw = get_output("find %s/../ -type d -name plugins" % search_path)
 
     if options_raw:
-        return options_raw.split('\n')
+        return options_raw.split("\n")
     else:
         return None
