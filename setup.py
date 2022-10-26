@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="k5test",
-    version="0.10.1",
+    version="0.10.2",
     author="The Python GSSAPI Team",
     author_email="sross@redhat.com",
     packages=["k5test"],
@@ -22,6 +22,7 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: ISC License (ISCL)",
         "License :: OSI Approved :: MIT License",
