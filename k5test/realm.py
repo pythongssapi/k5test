@@ -68,16 +68,13 @@ def _cfg_merge(cfg1, cfg2):
 
 
 def _discover_path(name, default, paths):
-    stderr_out = subprocess.DEVNULL
-    try:
-        path = subprocess.check_output(["which", name], stderr=stderr_out).strip()
-        path = path.decode(sys.getfilesystemencoding() or sys.getdefaultencoding())
+    path = shutil.which(name)
+    if path is not None:
         _LOG.debug(f"Using discovered path for {name} ({path})")
-        return path
-    except subprocess.CalledProcessError as e:
+    else:
         path = paths.get(name, default)
         _LOG.debug(f"Using default path for {name} ({path}): {e}")
-        return path
+    return path
 
 
 class K5Realm(metaclass=abc.ABCMeta):
