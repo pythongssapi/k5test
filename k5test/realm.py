@@ -73,7 +73,7 @@ def _discover_path(name, default, paths):
         _LOG.debug(f"Using discovered path for {name} ({path})")
     else:
         path = paths.get(name, default)
-        _LOG.debug(f"Using default path for {name} ({path}): {e}")
+        _LOG.debug(f"Using default path for {name} ({path})")
     return path
 
 
