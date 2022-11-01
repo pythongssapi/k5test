@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="k5test",
-    version="0.10.2",
+    version="0.10.3",
     author="The Python GSSAPI Team",
     author_email="sross@redhat.com",
     packages=["k5test"],
