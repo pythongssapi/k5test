@@ -126,7 +126,6 @@ class K5Realm(metaclass=abc.ABCMeta):
         existing=None,
         **paths,
     ):
-
         if existing is not None:
             self.tmpdir = existing
             self.is_existing = True
