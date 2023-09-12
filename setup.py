@@ -10,7 +10,10 @@ setup(
     description="A library for testing Python applications in "
     "self-contained Kerberos 5 environments",
     long_description=open("README.md").read(),
-    license="LICENSE.txt",
+    license_files=[
+        "LICENSE.txt",
+        "K5TEST-LICENSE.txt",
+    ],
     url="https://github.com/pythongssapi/k5test",
     python_requires=">=3.6",
     classifiers=[
