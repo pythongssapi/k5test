@@ -589,7 +589,7 @@ class MITRealm(K5Realm):
             start_args.extend(args)
         self._kdc_proc = self._start_daemon(start_args, env, "starting...")
 
-    def start_kadmind(self, env):
+    def start_kadmind(self, env=None):
         if self._kadmind_proc:
             raise Exception("kadmind has already started")
 
