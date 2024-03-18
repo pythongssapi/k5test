@@ -499,6 +499,7 @@ class MITRealm(K5Realm):
                     "kdc_ports": "$port0",
                     "kdc_tcp_ports": "$port0",
                     "database_name": "$tmpdir/db",
+                    "max_renewable_life": "7d",
                 }
             },
             "dbmodules": {
