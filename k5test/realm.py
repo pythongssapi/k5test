@@ -673,7 +673,7 @@ class HeimdalRealm(K5Realm):
 
     def create_kdb(self):
         self.run_kadminl(
-            ["stash", f"--key-file={self.tmpdir}/stash" "--random-password"]
+            ["stash", f"--key-file={self.tmpdir}/stash", "--random-password"]
         )
         self.run_kadminl(["init", self.realm], input="\n\n")
 
