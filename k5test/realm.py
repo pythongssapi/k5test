@@ -84,7 +84,10 @@ class K5Realm(metaclass=abc.ABCMeta):
         provider_cls = cls
 
         if provider_cls == K5Realm:
-            krb5_config = _discover_path("krb5-config", "/usr/bin/krb5-config", kwargs)
+            krb5_config = os.environ.get(
+                "KRB5CONFIG",
+                _discover_path("krb5-config", "/usr/bin/krb5-config", kwargs),
+            )
 
             try:
                 krb5_version = subprocess.check_output(
@@ -152,7 +155,23 @@ class K5Realm(metaclass=abc.ABCMeta):
 
         self._daemons = []
 
-        self._init_paths(**paths)
+        krb5_config = os.environ.get(
+            "KRB5CONFIG", _discover_path("krb5-config", "/usr/bin/krb5-config", paths)
+        )
+        try:
+            self._krb5_prefix = (
+                subprocess.check_output([krb5_config, "--prefix"])
+                .decode(sys.getfilesystemencoding() or sys.getdefaultencoding())
+                .strip()
+            )
+        except Exception as e:
+            self._krb5_prefix = "/usr"
+            _LOG.warning(
+                f"Failed to determine krb5 installation PREFIX, defaulting to '{self._krb5_prefix}'."
+            )
+
+        for attr, value in self._default_paths:
+            setattr(self, attr, value)
 
         if existing is None:
             self._create_conf(_cfg_merge(self._krb5_conf, krb5_conf), krb5_conf_path)
@@ -245,11 +264,6 @@ class K5Realm(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def start_kadmind(self, env=None):
         pass
-
-    def _init_paths(self, **paths):
-        for attr, name, default in self._default_paths:
-            value = _discover_path(name, default, paths)
-            setattr(self, attr, value)
 
     def _create_conf(self, profile, filename):
         with open(filename, "w") as conf_file:
@@ -456,14 +470,14 @@ class MITRealm(K5Realm):
     @property
     def _default_paths(self):
         return [
-            ("kdb5_util", "kdb5_util", "/usr/sbin/kdb5_util"),
-            ("krb5kdc", "krb5kdc", "/usr/sbin/krb5kdc"),
-            ("kadmin", "kadmin", "/usr/bin/kadmin"),
-            ("kadmin_local", "kadmin.local", "/usr/sbin/kadmin.local"),
-            ("kadmind", "kadmind", "/usr/sbin/kadmind"),
-            ("kprop", "kprop", "/usr/sbin/kprop"),
-            ("_kinit", "kinit", "/usr/bin/kinit"),
-            ("_klist", "klist", "/usr/bin/klist"),
+            ("kdb5_util", self._krb5_prefix + "/sbin/kdb5_util"),
+            ("krb5kdc", self._krb5_prefix + "/sbin/krb5kdc"),
+            ("kadmin", self._krb5_prefix + "/bin/kadmin"),
+            ("kadmin_local", self._krb5_prefix + "/sbin/kadmin.local"),
+            ("kadmind", self._krb5_prefix + "/sbin/kadmind"),
+            ("kprop", self._krb5_prefix + "/sbin/kprop"),
+            ("_kinit", self._krb5_prefix + "/bin/kinit"),
+            ("_klist", self._krb5_prefix + "/bin/klist"),
         ]
 
     @property
@@ -619,18 +633,19 @@ class HeimdalRealm(K5Realm):
 
     @property
     def _default_paths(self):
-        base = "/System/Library/PrivateFrameworks/Heimdal.framework/Helpers"
-        if sys.platform != "darwin":
-            base = "/usr/libexec"
+        if sys.platform == "darwin":
+            libexec = "/System/Library/PrivateFrameworks/Heimdal.framework/Helpers"
+        else:
+            libexec = self._krb5_prefix + "/libexec"
 
         return [
-            ("krb5kdc", "kdc", os.path.join(base, "kdc")),
-            ("kadmin", "kadmin", "/usr/bin/kadmin"),
-            ("kadmin_local", "kadmin", "/usr/bin/kadmin"),
-            ("kadmind", "kadmind", os.path.join(base, "kadmind")),
-            ("_kinit", "kinit", "/usr/bin/kinit"),
-            ("_klist", "klist", "/usr/bin/klist"),
-            ("_ktutil", "ktutil", "/usr/bin/ktutil"),
+            ("krb5kdc", libexec + "/kdc"),
+            ("kadmind", libexec + "/kadmind"),
+            ("kadmin", self._krb5_prefix + "/bin/kadmin"),
+            ("kadmin_local", self._krb5_prefix + "/bin/kadmin"),
+            ("_kinit", self._krb5_prefix + "/bin/kinit"),
+            ("_klist", self._krb5_prefix + "/bin/klist"),
+            ("_ktutil", self._krb5_prefix + "/bin/ktutil"),
         ]
 
     @property
